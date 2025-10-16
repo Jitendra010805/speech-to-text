@@ -15,31 +15,19 @@ if (!process.env.DEEPGRAM_API_KEY) {
   process.exit(1);
 }
 
-
 console.log("✅ .env loaded successfully");
 console.log("Deepgram key present:", !!process.env.DEEPGRAM_API_KEY);
 
-// Initialize Deepgram client
-const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
-
-// MongoDB model
-const Transcription = require("./models/Transcription");
-
+// Initialize Express
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const express = require('express')
-const app = express()
-const port = process.env.PORT || 4000
+// Test root route
+app.get("/", (req, res) => {
+  res.send("Backend is running!");
+});
 
-app.get('/', (req, res) => {
-  res.send('Hello World!')
-})
-
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
 // Ensure uploads folder exists
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
@@ -52,23 +40,33 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// Initialize Deepgram client
+const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
+
+// MongoDB model
+const Transcription = require("./models/Transcription");
+
 // Upload & transcribe audio
 app.post("/api/upload", upload.single("audio"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ transcription: "No file uploaded" });
+  if (!req.file)
+    return res.status(400).json({ transcription: "No file uploaded" });
 
   console.log("📁 Uploaded file:", req.file.path);
   let transcriptionText = "";
 
   try {
     const audioStream = fs.createReadStream(req.file.path);
-    const { result, error } = await deepgram.listen.prerecorded.transcribeFile(audioStream, {
-      model: "nova-3",
-      smart_format: true,
-    });
+    const { result } = await deepgram.listen.prerecorded.transcribeFile(
+      audioStream,
+      {
+        model: "nova-3",
+        smart_format: true,
+      }
+    );
 
-    if (error) throw error;
-
-    transcriptionText = result?.results?.channels?.[0]?.alternatives?.[0]?.transcript || "No speech detected in audio.";
+    transcriptionText =
+      result?.results?.channels?.[0]?.alternatives?.[0]?.transcript ||
+      "No speech detected in audio.";
     console.log("✅ Deepgram transcription success:", transcriptionText);
   } catch (err) {
     console.error("❌ Deepgram transcription failed:", err.message);
