@@ -15,6 +15,7 @@ if (!process.env.DEEPGRAM_API_KEY) {
   process.exit(1);
 }
 
+
 console.log("✅ .env loaded successfully");
 console.log("Deepgram key present:", !!process.env.DEEPGRAM_API_KEY);
 
@@ -28,6 +29,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const express = require('express')
+const app = express()
+const port = process.env.PORT || 4000
+
+app.get('/', (req, res) => {
+  res.send('Hello World!')
+})
+
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`)
+})
 // Ensure uploads folder exists
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
