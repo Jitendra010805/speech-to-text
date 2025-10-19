@@ -1,16 +1,21 @@
 import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { FaFileAudio, FaFileAlt, FaCopy, FaPlay, FaPause } from "react-icons/fa";
+import { FaPlay, FaPause, FaCopy, FaFileAudio, FaChevronDown, FaChevronUp } from "react-icons/fa";
 
 export default function History() {
   const navigate = useNavigate();
   const [history, setHistory] = useState([]);
   const [playingId, setPlayingId] = useState(null);
-  const audioRefs = useRef({}); // store audio elements by id
+  const [expandedId, setExpandedId] = useState(null);
+  const [waveformData, setWaveformData] = useState({});
+  const audioRefs = useRef({});
+  const audioContexts = useRef({});
+  const animationRefs = useRef({});
 
   useEffect(() => {
     fetchHistory();
+    return () => stopAllWaveforms();
   }, []);
 
   const fetchHistory = async () => {
@@ -22,11 +27,19 @@ export default function History() {
     }
   };
 
+  const stopAllWaveforms = () => {
+    Object.values(animationRefs.current).forEach((id) => cancelAnimationFrame(id));
+    Object.values(audioContexts.current).forEach((ctx) => ctx.close());
+    animationRefs.current = {};
+    audioContexts.current = {};
+    setWaveformData({});
+  };
+
   const togglePlay = (id) => {
-    // pause any other playing audio
     Object.keys(audioRefs.current).forEach((key) => {
       if (key !== id && audioRefs.current[key]) audioRefs.current[key].pause();
     });
+    stopAllWaveforms();
 
     const audio = audioRefs.current[id];
     if (!audio) return;
@@ -37,125 +50,184 @@ export default function History() {
     } else {
       audio.play();
       setPlayingId(id);
+      startWaveform(id, audio);
     }
+  };
+
+  const startWaveform = (id, audio) => {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioContext();
+    const analyser = ctx.createAnalyser();
+    const source = ctx.createMediaElementSource(audio);
+    source.connect(analyser);
+    analyser.connect(ctx.destination);
+    analyser.fftSize = 64;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const update = () => {
+      analyser.getByteFrequencyData(dataArray);
+      setWaveformData((prev) => ({ ...prev, [id]: Array.from(dataArray) }));
+      animationRefs.current[id] = requestAnimationFrame(update);
+    };
+    update();
+    audioContexts.current[id] = ctx;
   };
 
   const copyText = (text) => {
     navigator.clipboard.writeText(text);
-    alert("Transcription copied!");
+    alert("✅ Transcription copied!");
   };
 
-  const getFileTypeIcon = (fileName) => {
-    const ext = fileName.split(".").pop().toLowerCase();
-    if (["mp3", "wav", "m4a"].includes(ext))
-      return <FaFileAudio className="w-6 h-6 mr-2 text-blue-500" />;
-    return <FaFileAlt className="w-6 h-6 mr-2 text-gray-500" />;
+  const toggleExpand = (id) => {
+    setExpandedId(expandedId === id ? null : id);
+  };
+
+  const Waveform = ({ data }) => {
+    if (!data) return null;
+    const bars = data.slice(0, 20);
+    return (
+      <div className="flex items-end justify-center h-10 gap-1 mt-3">
+        {bars.map((value, i) => (
+          <div
+            key={i}
+            className="w-1.5 bg-gray-300 transition-all duration-100 ease-in-out opacity-80"
+            style={{
+              height: `${Math.max(4, (value / 255) * 40)}px`,
+              transitionDelay: `${i * 0.03}s`,
+            }}
+          />
+        ))}
+      </div>
+    );
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gradient-to-br from-[#51d0de] via-[#bf4aa8] to-[#d9d9d9]">
-      <header className="py-4 text-center bg-white shadow-md">
-        <h1 className="text-3xl font-bold text-[#1e40af]">📜 Transcription History</h1>
-      </header>
-
-      <main className="flex flex-col items-center flex-1 p-6 overflow-y-auto">
-        <div className="grid w-full max-w-4xl grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-3">
-          {history.length === 0 ? (
-            <p className="text-center text-gray-700 col-span-full">
-              No previous transcriptions.
-            </p>
-          ) : (
-            history.map((item) => {
-              const fileName = item.filePath.split("\\").pop();
-              const uploadedDate = new Date(item.createdAt);
-              const isRecent =
-                (Date.now() - uploadedDate.getTime()) / (1000 * 60 * 60 * 24) < 1;
-
-              return (
-                <div
-                  key={item._id}
-                  className="flex flex-col justify-between p-6 bg-white rounded-2xl border-l-4 border-[#51d0de]
-                             shadow-lg hover:shadow-2xl hover:scale-105 transform transition-all duration-300
-                             min-h-[340px] h-auto"
-                >
-                  {/* Text content */}
-                  <div className="mb-6">
-                    <div className="flex items-start mb-3">
-                      {getFileTypeIcon(fileName)}
-                      <h2 className="text-lg font-semibold text-gray-800 line-clamp-3">
-                        {item.text}
-                      </h2>
-                    </div>
-                    <p className="mb-3 text-sm text-gray-500">File: {fileName}</p>
-                    <span
-                      className={`inline-block px-3 py-1 text-xs font-medium rounded-full ${
-                        isRecent ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"
-                      }`}
-                    >
-                      {uploadedDate.toLocaleString()}
-                    </span>
-                  </div>
-
-                  {/* Buttons container with proper vertical spacing */}
-                  {["mp3", "wav", "m4a"].includes(fileName.split(".").pop().toLowerCase()) && (
-                    <div className="flex flex-col gap-4 mt-6"> {/* gap-4 ensures spacing */}
-                      {/* Hidden audio element */}
-                      <audio
-                        ref={(el) => (audioRefs.current[item._id] = el)}
-                        src={`http://localhost:5000/${item.filePath}`}
-                      />
-
-                      {/* Play/Pause Button */}
-                      <button
-                        onClick={() => togglePlay(item._id)}
-                        className={`flex items-center justify-center px-4 py-2 text-sm font-medium text-white
-                                   rounded-lg transition-all duration-300 transform
-                                   ${
-                                     playingId === item._id
-                                       ? "bg-blue-600 shadow-[0_0_20px_rgba(81,208,222,0.7)] animate-pulse"
-                                       : "bg-blue-600 hover:bg-blue-700"
-                                   }`}
-                      >
-                        {playingId === item._id ? (
-                          <>
-                            <FaPause className="mr-2" /> Pause Audio
-                          </>
-                        ) : (
-                          <>
-                            <FaPlay className="mr-2" /> Play Audio
-                          </>
-                        )}
-                      </button>
-
-                      {/* Copy Transcription Button */}
-                      <button
-                        onClick={() => copyText(item.text)}
-                        className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white transition-all duration-300 transform bg-green-600 rounded-lg hover:bg-green-700 hover:scale-105"
-                      >
-                        <FaCopy className="mr-2" /> Copy Transcription
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Back button */}
-        <div className="flex justify-center w-full max-w-4xl mt-12">
+    <div className="min-h-screen bg-gradient-to-b from-[#121212] to-[#1a1a1a] text-white flex flex-col">
+      {/* Header */}
+      <header className="px-8 py-6 bg-[#181818] shadow-md sticky top-0 z-10">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-[#1db954]">
+            🎧 Your Transcriptions
+          </h1>
           <button
             onClick={() => navigate("/")}
-            className="px-6 py-3 text-white transition-all duration-300 transform bg-blue-600 rounded-xl hover:bg-blue-700 hover:scale-105"
+            className="bg-[#1db954] hover:bg-[#1ed760] text-black px-5 py-2 rounded-full font-semibold transition-all"
           >
             ⬅ Back
           </button>
         </div>
+      </header>
+
+      <main className="flex-1 p-10">
+        {history.length === 0 ? (
+          <div className="mt-20 text-lg text-center text-gray-400">
+            No previous transcriptions yet.
+          </div>
+        ) : (
+          <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            {history.map((item) => {
+              const fileName = item.filePath.split("\\").pop();
+              const uploadedDate = new Date(item.createdAt).toLocaleString();
+              const isExpanded = expandedId === item._id;
+              const isPlaying = playingId === item._id;
+
+              return (
+                <div
+                  key={item._id}
+                  className={`group flex flex-col items-center bg-[#1e1e1e] p-6 rounded-xl shadow-lg
+                              hover:scale-105 hover:shadow-2xl transition-all duration-300 relative
+                              ${isPlaying ? "animate-pulse-glow" : ""}`}
+                >
+                  {/* Audio Icon */}
+                  <div className="relative w-40 h-40 bg-[#282828] rounded-lg flex items-center justify-center overflow-hidden">
+                    <FaFileAudio className="text-[#1db954] text-6xl opacity-90" />
+                    <button
+                      onClick={() => togglePlay(item._id)}
+                      className="absolute opacity-0 group-hover:opacity-100 bg-[#1db954] text-black rounded-full w-12 h-12 flex items-center justify-center transition-all transform group-hover:scale-110 shadow-lg"
+                    >
+                      {isPlaying ? <FaPause /> : <FaPlay />}
+                    </button>
+                    <audio
+                      ref={(el) => (audioRefs.current[item._id] = el)}
+                      src={`http://localhost:5000/${item.filePath}`}
+                    />
+                  </div>
+
+                  {/* Hover waveform preview */}
+                  {!isPlaying && (
+                    <div className="flex items-end justify-center h-6 gap-1 mt-2 transition-opacity duration-300 opacity-0 group-hover:opacity-80">
+                      {Array.from({ length: 20 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="w-1.5 bg-gray-500 rounded-sm"
+                          style={{ height: `${Math.floor(Math.random() * 12 + 4)}px` }}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Live waveform */}
+                  {isPlaying && <Waveform data={waveformData[item._id]} />}
+
+                  {/* Transcription */}
+                  <div
+                    className="mt-5 text-center cursor-pointer select-none"
+                    onClick={() => toggleExpand(item._id)}
+                  >
+                    <p
+                      className={`text-sm text-gray-300 ${
+                        isExpanded ? "" : "line-clamp-2"
+                      } transition-all duration-300`}
+                    >
+                      {item.text || "No transcription available."}
+                    </p>
+                    <div className="flex justify-center items-center gap-1 mt-1 text-[#1db954] text-xs font-medium">
+                      {isExpanded ? (
+                        <>
+                          <FaChevronUp /> Show Less
+                        </>
+                      ) : (
+                        <>
+                          <FaChevronDown /> Show More
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Date */}
+                  <p className="mt-2 text-xs text-gray-500">{uploadedDate}</p>
+
+                  {/* Copy button */}
+                  <button
+                    onClick={() => copyText(item.text)}
+                    className="mt-4 flex items-center justify-center gap-2 bg-[#1db954] text-black font-medium px-4 py-2 rounded-full hover:bg-[#1ed760] transition-all"
+                  >
+                    <FaCopy /> Copy
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </main>
 
-      <footer className="py-4 mt-auto text-center bg-white shadow-inner">
-        <p className="text-gray-600">© 2025 Smart Speech-to-Text</p>
+      <footer className="py-5 text-center text-gray-500 text-sm bg-[#121212] border-t border-[#1f1f1f]">
+        © 2025 Smart Speech-to-Text | Powered by Deepgram
       </footer>
+
+      {/* Glow animation */}
+      <style>
+        {`
+          @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 10px rgba(29, 185, 84, 0.5); }
+            50% { box-shadow: 0 0 25px rgba(29, 185, 84, 0.8); }
+          }
+          .animate-pulse-glow {
+            animation: pulseGlow 1.2s infinite;
+          }
+        `}
+      </style>
     </div>
   );
 }
