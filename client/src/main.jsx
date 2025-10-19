@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./index.css";
 import App from "./App.jsx";
- // 👈 Import your History page
+import History from "./history.jsx"; // 👈 Import your History page
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
