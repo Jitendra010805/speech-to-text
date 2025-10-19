@@ -110,13 +110,10 @@ const clientBuildPath = path.join(__dirname, "../client/build");
 app.use(express.static(clientBuildPath));
 
 // For all other routes, send index.html
-app.get('*', function(req, res) {
-  res.sendFile(path.join(clientBuildPath, 'index.html'), function(err) {
-    if (err) {
-      res.status(500).send(err);
-    }
-  });
+app.get(/^(?!\/api).*/, (req, res) => {
+  res.sendFile(path.join(clientBuildPath, "index.html"));
 });
+
 
 // --------------------
 // Connect MongoDB & start server
