@@ -110,7 +110,7 @@ const clientBuildPath = path.join(__dirname, "../client/build");
 app.use(express.static(clientBuildPath));
 
 // For all other routes, send index.html
-app.get('/*', (req, res) => {
+app.get('/:anyPath(*)', (req, res) => {
   res.sendFile(path.join(clientBuildPath, "index.html"));
 });
 
