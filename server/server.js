@@ -9,7 +9,9 @@ const { createClient } = require("@deepgram/sdk");
 
 dotenv.config();
 
-// Check Deepgram API Key
+// --------------------
+// Check Environment Variables
+// --------------------
 if (!process.env.DEEPGRAM_API_KEY) {
   console.error("❌ DEEPGRAM_API_KEY missing in .env");
   process.exit(1);
@@ -18,22 +20,32 @@ if (!process.env.DEEPGRAM_API_KEY) {
 console.log("✅ .env loaded successfully");
 console.log("Deepgram key present:", !!process.env.DEEPGRAM_API_KEY);
 
-// Initialize Express
+// --------------------
+// Initialize App & Middleware
+// --------------------
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Initialize Deepgram client
+// --------------------
+// Deepgram Client
+// --------------------
 const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
 
-// MongoDB model
+// --------------------
+// MongoDB Model
+// --------------------
 const Transcription = require("./models/Transcription");
 
-// Ensure uploads folder exists
+// --------------------
+// Ensure Upload Folder Exists
+// --------------------
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
-// Multer setup
+// --------------------
+// Multer Setup
+// --------------------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) =>
@@ -42,10 +54,8 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // --------------------
-// API Routes
+// 📤 Upload & Transcribe Route
 // --------------------
-
-// Upload & transcribe audio
 app.post("/api/upload", upload.single("audio"), async (req, res) => {
   if (!req.file)
     return res.status(400).json({ transcription: "No file uploaded" });
@@ -72,7 +82,7 @@ app.post("/api/upload", upload.single("audio"), async (req, res) => {
     transcriptionText = "Unable to transcribe this audio.";
   }
 
-  // Save to MongoDB
+  // Save transcription to MongoDB
   try {
     const relativePath = path.join("uploads", path.basename(req.file.path));
     await Transcription.create({
@@ -87,7 +97,9 @@ app.post("/api/upload", upload.single("audio"), async (req, res) => {
   res.json({ transcription: transcriptionText });
 });
 
-// Fetch transcription history
+// --------------------
+// 📜 Fetch History Route
+// --------------------
 app.get("/api/history", async (req, res) => {
   try {
     const all = await Transcription.find().sort({ createdAt: -1 });
@@ -98,33 +110,69 @@ app.get("/api/history", async (req, res) => {
   }
 });
 
-// Serve uploaded files
-app.use("/uploads", express.static(uploadDir));
-
 // --------------------
-// Serve React Frontend
+// 🗑️ Delete History Route
 // --------------------
+// Delete a transcription by ID
+app.delete("/api/history/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log("🧩 DELETE REQUEST RECEIVED, ID:", id);
 
-// Serve React build
-const clientBuildPath = path.join(__dirname, "../client/build");
-app.use(express.static(clientBuildPath));
+    const transcription = await Transcription.findById(id);
+    if (!transcription) {
+      console.warn("⚠️ Transcription not found for ID:", id);
+      return res.status(404).json({ error: "Transcription not found" });
+    }
 
-// For all other routes, send index.html
-app.get(/^(?!\/api).*/, (req, res) => {
-  res.sendFile(path.join(clientBuildPath, "index.html"));
+    // Resolve full file path
+    const filePath = path.resolve(path.join(__dirname, transcription.filePath));
+    console.log("🧭 Full resolved path:", filePath);
+
+    // Delete the file if exists
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log("✅ Deleted file:", filePath);
+    } else {
+      console.warn("⚠️ File not found:", filePath);
+    }
+
+    // Delete DB record
+    await Transcription.findByIdAndDelete(id);
+    console.log("🗑️ Deleted transcription:", id);
+
+    res.status(200).json({ message: "Deleted successfully" });
+  } catch (err) {
+    console.error("❌ Delete error:", err);
+    res.status(500).json({ error: "Failed to delete" });
+  }
 });
 
 
 // --------------------
-// Connect MongoDB & start server
+// Serve Uploaded Files
+// --------------------
+app.use("/uploads", express.static(uploadDir));
+
+// --------------------
+// Serve React Frontend (for deployment)
+// --------------------
+const clientBuildPath = path.join(__dirname, "../client/build");
+app.use(express.static(clientBuildPath));
+
+// For any other route, send index.html (for React Router)
+app.get(/^(?!\/api).*/, (req, res) => {
+  res.sendFile(path.join(clientBuildPath, "index.html"));
+});
+
+// --------------------
+// Connect MongoDB & Start Server
 // --------------------
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
     console.log("✅ MongoDB connected");
     const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () =>
-      console.log(`✅ Server running on port ${PORT}`)
-    );
+    app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
   })
-  .catch((err) => console.error("❌ MongoDB error:", err.message));
+  .catch((err) => console.error("❌ MongoDB connection error:", err.message));
