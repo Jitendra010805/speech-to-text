@@ -5,6 +5,9 @@ import RecordPlugin from "wavesurfer.js/dist/plugins/record.js";
 import { useNavigate } from "react-router-dom";
 import "./App.css";
 
+// Use backend URL from .env
+const API_URL = import.meta.env.VITE_API_URL;
+
 function App() {
   const [file, setFile] = useState(null);
   const [transcription, setTranscription] = useState(null);
@@ -149,7 +152,7 @@ function App() {
     setTranscription(null);
 
     try {
-      const res = await axios.post("http://localhost:5000/api/upload", formData, {
+      const res = await axios.post(`${API_URL}/api/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setTranscription(res.data.transcription || "No transcription received.");

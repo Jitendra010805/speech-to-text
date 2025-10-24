@@ -17,6 +17,11 @@ if (!process.env.DEEPGRAM_API_KEY) {
   process.exit(1);
 }
 
+if (!process.env.MONGO_URI) {
+  console.error("❌ MONGO_URI missing in .env");
+  process.exit(1);
+}
+
 console.log("✅ .env loaded successfully");
 console.log("Deepgram key present:", !!process.env.DEEPGRAM_API_KEY);
 
@@ -24,7 +29,7 @@ console.log("Deepgram key present:", !!process.env.DEEPGRAM_API_KEY);
 // Initialize App & Middleware
 // --------------------
 const app = express();
-app.use(cors());
+app.use(cors()); // Enable CORS
 app.use(express.json());
 
 // --------------------
@@ -113,7 +118,6 @@ app.get("/api/history", async (req, res) => {
 // --------------------
 // 🗑️ Delete History Route
 // --------------------
-// Delete a transcription by ID
 app.delete("/api/history/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -127,9 +131,6 @@ app.delete("/api/history/:id", async (req, res) => {
 
     // Resolve full file path
     const filePath = path.resolve(path.join(__dirname, transcription.filePath));
-    console.log("🧭 Full resolved path:", filePath);
-
-    // Delete the file if exists
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       console.log("✅ Deleted file:", filePath);
@@ -148,19 +149,16 @@ app.delete("/api/history/:id", async (req, res) => {
   }
 });
 
-
 // --------------------
 // Serve Uploaded Files
 // --------------------
 app.use("/uploads", express.static(uploadDir));
 
 // --------------------
-// Serve React Frontend (for deployment)
+// Serve React Frontend
 // --------------------
 const clientBuildPath = path.join(__dirname, "../client/build");
 app.use(express.static(clientBuildPath));
-
-// For any other route, send index.html (for React Router)
 app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(clientBuildPath, "index.html"));
 });
