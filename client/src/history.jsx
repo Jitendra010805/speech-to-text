@@ -9,7 +9,7 @@ export default function History() {
   const [message, setMessage] = useState("");
   const audioRefs = useRef({});
 
-  // Use environment variable, fallback to localhost for development
+  // ✅ Works for both local and production environments
   const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   useEffect(() => {
@@ -19,7 +19,7 @@ export default function History() {
   const fetchHistory = async () => {
     try {
       const res = await axios.get(`${BASE_URL}/api/history`);
-      setHistory(res.data); // No need to reverse if server already sorts by createdAt
+      setHistory(res.data);
     } catch (err) {
       console.error("Error fetching history:", err);
       setMessage("❌ Failed to fetch history.");
@@ -66,6 +66,7 @@ export default function History() {
 
   return (
     <div className="flex flex-col min-h-screen text-gray-900 bg-gray-100">
+      {/* Header */}
       <header className="flex items-center justify-between p-4 bg-white shadow-md">
         <h1 className="text-xl font-bold">Transcription History</h1>
         <button
@@ -76,6 +77,7 @@ export default function History() {
         </button>
       </header>
 
+      {/* Notification message */}
       {message && (
         <div
           className={`mx-auto my-4 px-4 py-2 w-fit rounded text-white font-medium ${
@@ -86,6 +88,7 @@ export default function History() {
         </div>
       )}
 
+      {/* Main content */}
       <main className="flex-1 p-6">
         {history.length === 0 ? (
           <div className="mt-20 text-center text-gray-500">
@@ -94,12 +97,12 @@ export default function History() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {history.map((item) => {
-              const fileName = item.filePath.split(/[\\/]/).pop();
+              const fileName = item.filePath?.split(/[\\/]/).pop() || "Unknown File";
               const uploadedDate = new Date(item.createdAt).toLocaleString();
               const isPlaying = playingId === item._id;
 
-              // Ensure the URL works on both localhost and deployed backend
-              const audioSrc = item.filePath.startsWith("uploads")
+              // ✅ Ensure file works for both localhost and hosted URLs
+              const audioSrc = item.filePath?.startsWith("uploads")
                 ? `${BASE_URL}/${item.filePath}`
                 : item.filePath;
 
@@ -150,6 +153,7 @@ export default function History() {
         )}
       </main>
 
+      {/* Footer */}
       <footer className="p-4 text-sm text-center text-gray-500 bg-white border-t">
         © 2025 Smart Speech-to-Text
       </footer>

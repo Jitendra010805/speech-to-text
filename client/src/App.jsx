@@ -5,10 +5,10 @@ import RecordPlugin from "wavesurfer.js/dist/plugins/record.js";
 import { useNavigate } from "react-router-dom";
 import "./App.css";
 
-// Use backend URL from .env
-const API_URL = import.meta.env.VITE_API_URL;
+// 🔹 Dynamically use backend URL from .env
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-function App() {
+export default function App() {
   const [file, setFile] = useState(null);
   const [transcription, setTranscription] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -39,6 +39,7 @@ function App() {
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
+  // 🔹 Audio pulse animation
   const startPulse = async () => {
     if (!navigator.mediaDevices.getUserMedia) return;
 
@@ -67,7 +68,6 @@ function App() {
       analyserRef.current.getByteFrequencyData(dataArrayRef.current);
       const avg = dataArrayRef.current.reduce((a, b) => a + b, 0) / dataArrayRef.current.length;
 
-      // Pulse canvas
       pulseCtx.clearRect(0, 0, pulseCanvas.width, pulseCanvas.height);
       const radius = 20 + (avg / 255) * 50;
       const gradient = pulseCtx.createRadialGradient(centerX, centerY, radius * 0.3, centerX, centerY, radius);
@@ -86,13 +86,11 @@ function App() {
       pulseCtx.fill();
       pulseCtx.shadowBlur = 0;
 
-      // VU meter
       const vuWidth = (avg / 255) * vuCanvas.width;
       vuCtx.clearRect(0, 0, vuCanvas.width, vuCanvas.height);
       vuCtx.fillStyle = "#51d0de";
       vuCtx.fillRect(0, 0, vuWidth, vuCanvas.height);
 
-      // Animate background blobs color & scale
       if (bgBlobs) {
         const hueShift = (avg / 255) * 60;
         bgBlobs.style.background = `radial-gradient(circle at top left, hsl(${180 + hueShift}, 65%, 45%), hsl(${220 + hueShift}, 80%, 15%) 60%, #030712)`;
@@ -140,10 +138,12 @@ function App() {
 
   const handleFileChange = (e) => setFile(e.target.files[0]);
 
+  // 🔹 Upload logic (for both file & recorded audio)
   const handleUpload = async (audioBlob = null) => {
     const audioFile = audioBlob
       ? new File([audioBlob], "recorded_audio.wav", { type: "audio/wav" })
       : file;
+
     if (!audioFile) return alert("Please record or upload an audio file first.");
 
     const formData = new FormData();
@@ -158,7 +158,7 @@ function App() {
       setTranscription(res.data.transcription || "No transcription received.");
       setFile(null);
     } catch (err) {
-      console.error(err);
+      console.error("❌ Upload error:", err.message);
       setTranscription("❌ Error uploading or transcribing the file.");
     } finally {
       setLoading(false);
@@ -231,7 +231,7 @@ function App() {
       </header>
 
       <div className="record-upload-section">
-        {/* Upload Audio first */}
+        {/* 📁 Upload Audio */}
         <div className="upload-box glass-box rounded-2xl">
           <h2 className="text-xl font-semibold text-center text-purple-300">📁 Upload Audio</h2>
           <input
@@ -240,14 +240,16 @@ function App() {
             onChange={handleFileChange}
             className="w-full p-2 text-center text-white border rounded-md bg-white/10"
           />
-          <div className="btn-group">
-            <button onClick={() => handleUpload()} disabled={loading} className="w-full btn-neon disabled:opacity-50">
-              {loading ? "⏳ Processing..." : "⬆️ Upload & Transcribe"}
-            </button>
-          </div>
+          <button
+            onClick={() => handleUpload()}
+            disabled={loading}
+            className="w-full mt-3 btn-neon disabled:opacity-50"
+          >
+            {loading ? "⏳ Processing..." : "⬆️ Upload & Transcribe"}
+          </button>
         </div>
 
-        {/* Record Audio */}
+        {/* 🎙️ Record Audio */}
         <div className="record-box glass-box rounded-2xl">
           <h2 className="text-xl font-semibold text-center text-purple-300">🎙️ Record Audio</h2>
 
@@ -270,7 +272,11 @@ function App() {
             {recordedBlob && (
               <>
                 <button onClick={handlePlayRecording} className="bg-indigo-500 btn-neon">▶️ Play</button>
-                <button onClick={handleUploadRecording} disabled={loading} className="bg-blue-600 btn-neon disabled:opacity-50">
+                <button
+                  onClick={handleUploadRecording}
+                  disabled={loading}
+                  className="bg-blue-600 btn-neon disabled:opacity-50"
+                >
                   {loading ? "⏳ Uploading..." : "⬆️ Upload & Transcribe"}
                 </button>
                 <button onClick={resetRecording} className="bg-gray-500 btn-neon">🔄 New</button>
@@ -280,18 +286,20 @@ function App() {
         </div>
       </div>
 
-      {/* History button at bottom */}
-      <button onClick={() => navigate("/history")} className="history-button">📜 View History</button>
+      {/* 📜 History Button */}
+      <button onClick={() => navigate("/history")} className="history-button">
+        📜 View History
+      </button>
 
-      {/* Transcription Box */}
+      {/* 🧠 Transcription Box */}
       {transcription && (
         <div className="transcription-box glass-box rounded-xl">
           <h2 className="mb-2 text-2xl font-semibold text-center text-purple-300">🧠 Transcription Result:</h2>
-          <p className="text-lg leading-relaxed text-center text-gray-100 whitespace-pre-wrap">{transcription}</p>
+          <p className="text-lg leading-relaxed text-center text-gray-100 whitespace-pre-wrap">
+            {transcription}
+          </p>
         </div>
       )}
     </div>
   );
 }
-
-export default App;
