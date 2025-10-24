@@ -6,10 +6,11 @@ export default function History() {
   const navigate = useNavigate();
   const [history, setHistory] = useState([]);
   const [playingId, setPlayingId] = useState(null);
-  const [message, setMessage] = useState(""); // ✅ Message div
+  const [message, setMessage] = useState("");
   const audioRefs = useRef({});
 
-  const BASE_URL = "http://localhost:5000"; // change if backend is deployed
+  // Use environment variable, fallback to localhost for development
+  const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   useEffect(() => {
     fetchHistory();
@@ -18,7 +19,7 @@ export default function History() {
   const fetchHistory = async () => {
     try {
       const res = await axios.get(`${BASE_URL}/api/history`);
-      setHistory(res.data.reverse());
+      setHistory(res.data); // No need to reverse if server already sorts by createdAt
     } catch (err) {
       console.error("Error fetching history:", err);
       setMessage("❌ Failed to fetch history.");
@@ -27,11 +28,8 @@ export default function History() {
   };
 
   const togglePlay = (id) => {
-    // Pause all other audios
     Object.keys(audioRefs.current).forEach((key) => {
-      if (key !== id && audioRefs.current[key]) {
-        audioRefs.current[key].pause();
-      }
+      if (key !== id && audioRefs.current[key]) audioRefs.current[key].pause();
     });
 
     const audio = audioRefs.current[id];
@@ -68,7 +66,6 @@ export default function History() {
 
   return (
     <div className="flex flex-col min-h-screen text-gray-900 bg-gray-100">
-      {/* Header */}
       <header className="flex items-center justify-between p-4 bg-white shadow-md">
         <h1 className="text-xl font-bold">Transcription History</h1>
         <button
@@ -79,7 +76,6 @@ export default function History() {
         </button>
       </header>
 
-      {/* Message div */}
       {message && (
         <div
           className={`mx-auto my-4 px-4 py-2 w-fit rounded text-white font-medium ${
@@ -90,7 +86,6 @@ export default function History() {
         </div>
       )}
 
-      {/* Main Content */}
       <main className="flex-1 p-6">
         {history.length === 0 ? (
           <div className="mt-20 text-center text-gray-500">
@@ -99,9 +94,14 @@ export default function History() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {history.map((item) => {
-              const fileName = item.filePath.split("\\").pop();
+              const fileName = item.filePath.split(/[\\/]/).pop();
               const uploadedDate = new Date(item.createdAt).toLocaleString();
               const isPlaying = playingId === item._id;
+
+              // Ensure the URL works on both localhost and deployed backend
+              const audioSrc = item.filePath.startsWith("uploads")
+                ? `${BASE_URL}/${item.filePath}`
+                : item.filePath;
 
               return (
                 <div
@@ -112,7 +112,7 @@ export default function History() {
 
                   <audio
                     ref={(el) => (audioRefs.current[item._id] = el)}
-                    src={`${BASE_URL}/${item.filePath}`}
+                    src={audioSrc}
                   />
 
                   <div className="flex items-center gap-2 my-3">
@@ -150,7 +150,6 @@ export default function History() {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="p-4 text-sm text-center text-gray-500 bg-white border-t">
         © 2025 Smart Speech-to-Text
       </footer>
