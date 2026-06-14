@@ -41,6 +41,7 @@ const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
 // MongoDB Model
 // --------------------
 const Transcription = require("./models/Transcription");
+const { Z_BEST_COMPRESSION } = require("zlib");
 
 // --------------------
 // Ensure Upload Folder Exists
@@ -157,7 +158,7 @@ app.use("/uploads", express.static(uploadDir));
 // --------------------
 // Serve React Frontend
 // --------------------
-const clientBuildPath = path.join(__dirname, "../client/build");
+const clientBuildPath = path.join(__dirname, "../client/dist");
 app.use(express.static(clientBuildPath));
 app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(clientBuildPath, "index.html"));
@@ -166,11 +167,110 @@ app.get(/^(?!\/api).*/, (req, res) => {
 // --------------------
 // Connect MongoDB & Start Server
 // --------------------
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("✅ MongoDB connected");
-    const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-  })
-  .catch((err) => console.error("❌ MongoDB connection error:", err.message));
+const dns = require("dns").promises;
+
+async function resolveMongoSrv(uri) {
+  if (!uri.startsWith("mongodb+srv://")) {
+    return uri;
+  }
+
+  const attemptResolve = async (dnsServers) => {
+    if (dnsServers) {
+      dns.setServers(dnsServers);
+    }
+
+    const match = uri.match(/^mongodb\+srv:\/\/([^/]+)(.*)$/);
+    if (!match) return uri;
+
+    const authorityAndHost = match[1];
+    const pathAndOptions = match[2];
+
+    let credentials = "";
+    let host = authorityAndHost;
+
+    if (authorityAndHost.includes("@")) {
+      const parts = authorityAndHost.split("@");
+      host = parts.pop();
+      credentials = parts.join("@") + "@";
+    }
+
+    const srvRecords = await dns.resolveSrv(`_mongodb._tcp.${host}`);
+    if (!srvRecords || srvRecords.length === 0) {
+      throw new Error("No SRV records found");
+    }
+
+    const hostsList = srvRecords
+      .map((record) => `${record.name}:${record.port}`)
+      .join(",");
+
+    let txtOptions = "";
+    try {
+      const txtRecords = await dns.resolveTxt(host);
+      if (txtRecords && txtRecords.length > 0) {
+        txtOptions = txtRecords.flat().join("&");
+      }
+    } catch (txtErr) {
+      // Ignored: TXT records are optional
+    }
+
+    let database = "";
+    let queryParams = "";
+    const pathMatch = pathAndOptions.match(/^\/([^?]*)(?:\?(.*))?$/);
+    if (pathMatch) {
+      database = pathMatch[1] || "";
+      queryParams = pathMatch[2] || "";
+    }
+
+    const allOptions = [];
+    if (txtOptions) allOptions.push(txtOptions);
+    if (queryParams) allOptions.push(queryParams);
+    if (!allOptions.some((opt) => opt.includes("ssl=") || opt.includes("tls="))) {
+      allOptions.push("ssl=true");
+    }
+
+    const finalQuery = allOptions.length > 0 ? `?${allOptions.join("&")}` : "";
+    return `mongodb://${credentials}${hostsList}/${database}${finalQuery}`;
+  };
+
+  try {
+    // Try resolving with default DNS configuration
+    return await attemptResolve();
+  } catch (err) {
+    console.warn(`⚠️ DNS SRV resolution failed with default DNS: ${err.message}. Retrying with public DNS (8.8.8.8, 1.1.1.1)...`);
+    try {
+      // Retry with Google and Cloudflare public DNS
+      return await attemptResolve(["8.8.8.8", "1.1.1.1"]);
+    } catch (retryErr) {
+      console.error(`❌ DNS SRV resolution failed with public DNS: ${retryErr.message}`);
+      return uri; // Return original URI as last resort
+    }
+  }
+}
+
+async function connectMongo() {
+  const originalUri = process.env.MONGO_URI;
+  let connectionUri = originalUri;
+
+  try {
+    connectionUri = await resolveMongoSrv(originalUri);
+  } catch (err) {
+    console.error("⚠️ Error while resolving MONGO_URI:", err.message);
+  }
+
+  console.log("Connecting to MongoDB...");
+  try {
+    await mongoose.connect(connectionUri, { serverSelectionTimeoutMS: 5000 });
+    console.log("✅ MongoDB connected successfully");
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err.message);
+    console.log("🔄 Retrying MongoDB connection in 10 seconds...");
+    setTimeout(connectMongo, 10000);
+  }
+}
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  connectMongo();
+});
+
